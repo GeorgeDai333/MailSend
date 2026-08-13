@@ -589,11 +589,10 @@ class AttachmentSafetyTests(TestCase):
             follow=True,
         )
 
-    def test_python_file_is_rejected(self):
-        """The case that prompted this: Gmail allows .py, we do not."""
-        response = self._post(SimpleUploadedFile("evil.py", b"import os"))
-        self.assertEqual(Email.objects.get().attachments.count(), 0)
-        self.assertContains(response, "can run code")
+    def test_python_file_is_allowed(self):
+        """Deliberate: the blocklist mirrors Gmail, and Gmail permits .py."""
+        self._post(SimpleUploadedFile("script.py", b"import os"))
+        self.assertEqual(Email.objects.get().attachments.count(), 1)
 
     def test_executable_is_rejected(self):
         self._post(SimpleUploadedFile("virus.exe", b"MZ\x90\x00"))
@@ -603,10 +602,20 @@ class AttachmentSafetyTests(TestCase):
         self._post(SimpleUploadedFile("invoice.pdf.exe", b"MZ"))
         self.assertEqual(Email.objects.get().attachments.count(), 0)
 
-    def test_extensionless_file_is_rejected(self):
-        response = self._post(SimpleUploadedFile("mystery", b"data"))
-        self.assertEqual(Email.objects.get().attachments.count(), 0)
-        self.assertContains(response, "no file extension")
+    def test_extensionless_file_is_allowed(self):
+        """Also deliberate: Gmail does not reject these, so neither do we."""
+        self._post(SimpleUploadedFile("mystery", b"data"))
+        self.assertEqual(Email.objects.get().attachments.count(), 1)
+
+    def test_blocklist_matches_gmail_exactly(self):
+        """Guards against quietly drifting away from Gmail's published list."""
+        from .attachments import BLOCKED_EXTENSIONS
+
+        self.assertEqual(BLOCKED_EXTENSIONS, GMAIL_BLOCKED_EXTENSIONS)
+        self.assertEqual(len(GMAIL_BLOCKED_EXTENSIONS), 54)
+        for permitted in [".py", ".sh", ".rb", ".pl", ".php", ".ts", ".jsx"]:
+            with self.subTest(extension=permitted):
+                self.assertNotIn(permitted, BLOCKED_EXTENSIONS)
 
     def test_ordinary_documents_are_allowed(self):
         for filename in ["report.pdf", "notes.docx", "budget.xlsx", "photo.png"]:
@@ -641,7 +650,7 @@ class AttachmentSafetyTests(TestCase):
 
     def test_case_is_ignored(self):
         self.assertIsNotNone(
-            rejection_reason(SimpleUploadedFile("SCRIPT.PY", b"x"))
+            rejection_reason(SimpleUploadedFile("SCRIPT.VBS", b"x"))
         )
         self.assertIsNotNone(
             rejection_reason(SimpleUploadedFile("Setup.EXE", b"x"))
@@ -666,7 +675,7 @@ class AttachmentSafetyTests(TestCase):
                 "send_date": "2026-12-01T09:00",
                 "attachments": [
                     SimpleUploadedFile("good.pdf", b"pdf"),
-                    SimpleUploadedFile("bad.py", b"code"),
+                    SimpleUploadedFile("bad.exe", b"MZ"),
                 ],
             },
             follow=True,
@@ -674,7 +683,7 @@ class AttachmentSafetyTests(TestCase):
         email = Email.objects.get()
         self.assertEqual(email.attachments.count(), 1)
         self.assertEqual(email.attachments.get().original_name, "good.pdf")
-        self.assertContains(response, "can run code")
+        self.assertContains(response, "Gmail blocks")
 
 
 class ScheduledSendCommandTests(TestCase):

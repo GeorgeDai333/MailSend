@@ -4,12 +4,15 @@ Gmail refuses to attach certain file types because they can execute on the
 recipient's machine. The Gmail *API* does not enforce that list, so a message
 sent through MailSend can carry a file the Gmail web interface would have
 rejected — which is why this check exists here.
+
+The blocklist mirrors Gmail's exactly. Types Gmail permits are permitted here,
+including scripting languages such as .py, .sh and .rb.
 """
 
 import os
 import zipfile
 
-# Gmail's published list of blocked extensions.
+# Gmail's published list of blocked extensions, reproduced verbatim.
 # https://support.google.com/mail/answer/6590
 GMAIL_BLOCKED_EXTENSIONS = frozenset(
     {
@@ -23,31 +26,9 @@ GMAIL_BLOCKED_EXTENSIONS = frozenset(
     }
 )
 
-# Gmail's list predates a lot of scripting and misses these — a .py or .sh is
-# every bit as executable as a .bat. An executive forwarding a script they were
-# handed is exactly the risk this tool should not add.
-EXTRA_BLOCKED_EXTENSIONS = frozenset(
-    {
-        ".py", ".pyc", ".pyo", ".pyw", ".pyz",
-        ".sh", ".bash", ".zsh", ".ksh", ".csh", ".fish",
-        ".rb", ".pl", ".php", ".lua", ".tcl", ".r",
-        ".ahk", ".applescript", ".command", ".osa", ".scpt",
-        ".jsx", ".ts", ".vbscript", ".workflow", ".action",
-        ".desktop", ".run", ".bin", ".elf", ".out",
-        ".reg", ".inf", ".job", ".scf", ".url", ".website",
-        ".ps1xml", ".psc1", ".psd1", ".psm1", ".pssc",
-        ".gadget", ".hlp", ".its", ".jnt", ".mad", ".maf", ".mag", ".mam",
-        ".maq", ".mar", ".mas", ".mat", ".mau", ".mav", ".maw", ".mcf",
-        ".msh", ".msh1", ".msh2", ".mshxml", ".msh1xml", ".msh2xml",
-        ".plg", ".prf", ".prg", ".pst", ".shs", ".theme", ".vsmacros",
-        ".vsw", ".ws", ".xnk",
-    }
-)
+BLOCKED_EXTENSIONS = GMAIL_BLOCKED_EXTENSIONS
 
-BLOCKED_EXTENSIONS = GMAIL_BLOCKED_EXTENSIONS | EXTRA_BLOCKED_EXTENSIONS
-
-# Archives are inspected one level deep, as Gmail does: a blocked file inside
-# a .zip is still a blocked file.
+# Gmail blocks these types inside archives too, so we look one level deep.
 ARCHIVE_EXTENSIONS = frozenset({".zip"})
 
 
@@ -85,19 +66,11 @@ def rejection_reason(uploaded_file):
     name = getattr(uploaded_file, "name", "") or ""
     extension = extension_of(name)
 
-    if not extension:
-        # No extension means the recipient's mail client guesses how to open
-        # it, which is the same hazard by a quieter route.
-        return (
-            f"“{name}” has no file extension, so it cannot be checked for "
-            "safety. Rename it with its proper extension and try again."
-        )
-
     if extension in BLOCKED_EXTENSIONS:
         return (
-            f"“{name}” is a {extension} file, which can run code on the "
-            "recipient's computer. Gmail blocks these too. Put it in a shared "
-            "drive and send the link instead."
+            f"“{name}” is a {extension} file, which Gmail blocks because it can "
+            "run code on the recipient's computer. Put it in a shared drive and "
+            "send the link instead."
         )
 
     if extension in ARCHIVE_EXTENSIONS:
@@ -106,9 +79,8 @@ def rejection_reason(uploaded_file):
             listed = ", ".join(sorted(blocked)[:3])
             more = "" if len(blocked) <= 3 else f" (+{len(blocked) - 3} more)"
             return (
-                f"“{name}” contains files that can run code on the recipient's "
-                f"computer: {listed}{more}. Gmail blocks these inside archives "
-                "too."
+                f"“{name}” contains file types Gmail blocks inside archives: "
+                f"{listed}{more}."
             )
 
     return None
