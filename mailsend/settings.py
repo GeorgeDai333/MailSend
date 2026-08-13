@@ -142,17 +142,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv(
     "GOOGLE_REDIRECT_URI", "http://localhost:8000/google/callback/"
 )
-# Identity only. Assistants sign in with these and nothing more — they never
-# send mail, so asking them to grant Gmail access would be both alarming and
-# useless. These are non-sensitive scopes, so they need no Google review.
-GOOGLE_BASIC_SCOPES = [
+GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/gmail.send",
 ]
-# Executives additionally grant send-only Gmail access. gmail.send cannot read
-# the mailbox — it is the narrowest scope that can deliver a message.
-GOOGLE_SCOPES = GOOGLE_BASIC_SCOPES + ["https://www.googleapis.com/auth/gmail.send"]
 # Optional allowlist: only these Google addresses may create an executive
 # account. Empty means anyone with a Google account can sign up.
 GOOGLE_ALLOWED_EMAILS = [e.lower() for e in env_list("GOOGLE_ALLOWED_EMAILS")]

@@ -30,17 +30,7 @@ class User(AbstractUser):
         EXECUTIVE = "EXEC", "Executive"
         ASSISTANT = "ASST", "Assistant"
 
-    class AuthMethod(models.TextChoices):
-        PASSWORD = "password", "Username and password"
-        GOOGLE = "google", "Sign in with Google"
-
     role = models.CharField(max_length=4, choices=Role.choices, default=Role.EXECUTIVE)
-    # Executives are always Google. Assistants can be either: invited by email
-    # (Google) or issued credentials directly (password), so an assistant
-    # without a Google account is never locked out.
-    auth_method = models.CharField(
-        max_length=10, choices=AuthMethod.choices, default=AuthMethod.PASSWORD
-    )
     # Set only on assistants: the executive whose mailbox they draft for.
     executive = models.ForeignKey(
         "self",
@@ -70,15 +60,6 @@ class User(AbstractUser):
     @property
     def friendly_name(self):
         return self.display_name or self.get_full_name() or self.email or self.username
-
-    @property
-    def signs_in_with_google(self):
-        return self.auth_method == self.AuthMethod.GOOGLE
-
-    @property
-    def invitation_pending(self):
-        """A Google assistant who has been added but has never signed in."""
-        return self.signs_in_with_google and self.last_login is None
 
     def __str__(self):
         return f"{self.friendly_name} ({self.get_role_display()})"

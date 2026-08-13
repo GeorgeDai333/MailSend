@@ -15,7 +15,6 @@ from django.views.decorators.http import require_POST
 
 from . import google_oauth
 from .forms import (
-    AssistantInviteForm,
     EmailForm,
     SignatureForm,
     StyledLoginForm,
@@ -26,7 +25,6 @@ from .gmail import SendError, send_email
 from .models import Attachment, Email, User
 
 OAUTH_STATE_KEY = "google_oauth_state"
-OAUTH_SCOPES_KEY = "google_oauth_scopes"
 
 
 # --- access control ---------------------------------------------------------
@@ -131,12 +129,7 @@ def logout_view(request):
 
 
 def google_start(request):
-    """Kick off the Google consent screen.
-
-    `?role=assistant` requests identity-only scopes. An assistant never sends
-    mail, so they are never asked to grant Gmail access — which also keeps
-    their consent screen free of any sensitive-scope warning.
-    """
+    """Kick off the Google consent screen."""
     if not google_oauth.is_configured():
         messages.error(
             request,
@@ -144,15 +137,9 @@ def google_start(request):
             "GOOGLE_CLIENT_SECRET in the .env file.",
         )
         return redirect("landing")
-
-    as_assistant = request.GET.get("role") == "assistant"
-    scopes = (
-        settings.GOOGLE_BASIC_SCOPES if as_assistant else settings.GOOGLE_SCOPES
-    )
     state = secrets.token_urlsafe(32)
     request.session[OAUTH_STATE_KEY] = state
-    request.session[OAUTH_SCOPES_KEY] = scopes
-    return redirect(google_oauth.build_auth_url(state, scopes))
+    return redirect(google_oauth.build_auth_url(state))
 
 
 def google_callback(request):
@@ -189,54 +176,35 @@ def google_callback(request):
         messages.error(request, "Google did not share an email address.")
         return redirect("landing")
 
-    user = User.objects.filter(email__iexact=email_address).first()
-    created = False
-
-    if user is None:
-        # Nobody has invited this address, so they are signing themselves up as
-        # an executive. The allowlist gates exactly this case — it must not
-        # block assistants their executive has already invited.
-        allowed = settings.GOOGLE_ALLOWED_EMAILS
-        if allowed and email_address not in allowed:
-            messages.error(
-                request,
-                f"{email_address} is not permitted to use this MailSend instance.",
-            )
-            return redirect("landing")
-        user = User.objects.create(
-            username=email_address,
-            email=email_address,
-            role=User.Role.EXECUTIVE,
-            auth_method=User.AuthMethod.GOOGLE,
+    allowed = settings.GOOGLE_ALLOWED_EMAILS
+    if allowed and email_address not in allowed:
+        messages.error(
+            request, f"{email_address} is not permitted to use this MailSend instance."
         )
-        created = True
+        return redirect("landing")
 
-    if user.is_assistant and not user.signs_in_with_google:
+    user, created = User.objects.get_or_create(
+        email__iexact=email_address,
+        defaults={
+            "username": email_address,
+            "email": email_address,
+            "role": User.Role.EXECUTIVE,
+        },
+    )
+    if created or not user.display_name:
+        user.display_name = profile.get("name", "") or user.display_name
+        user.email = email_address
+        user.save(update_fields=["display_name", "email"])
+
+    if user.is_assistant:
         messages.error(
             request,
-            "That account signs in with a username and password issued by your "
-            "executive, not with Google.",
+            "That Google account belongs to an assistant. Assistants sign in "
+            "with the username and password issued by their executive.",
         )
         return redirect("login")
 
-    if not user.is_active:
-        messages.error(request, "That account has been disabled.")
-        return redirect("landing")
-
-    if not user.display_name:
-        user.display_name = profile.get("name", "") or ""
-        user.save(update_fields=["display_name"])
-
-    # Only executives send mail, so only executives get Gmail tokens stored.
-    # An assistant's grant is identity-only and deliberately discarded.
-    if user.is_executive:
-        granted_scopes = request.session.pop(
-            OAUTH_SCOPES_KEY, settings.GOOGLE_SCOPES
-        )
-        google_oauth.store_tokens(user, payload, granted_scopes)
-    else:
-        request.session.pop(OAUTH_SCOPES_KEY, None)
-
+    google_oauth.store_tokens(user, payload, settings.GOOGLE_SCOPES)
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
     if created:
@@ -506,78 +474,37 @@ def exec_signature(request):
 
 @executive_required
 def exec_workers(request):
-    """Issue and manage the assistant accounts for this mailbox.
-
-    Two ways in: invite by Google address (no password ever exists), or issue
-    a username and password for an assistant without a Google account.
-    """
-    invite_form = AssistantInviteForm()
-    form = WorkerCreateForm()
-
+    """Issue and manage the assistant (worker) accounts for this mailbox."""
     if request.method == "POST":
-        if "invite" in request.POST:
-            invite_form = AssistantInviteForm(request.POST)
-            if invite_form.is_valid():
-                email_address = invite_form.cleaned_data["email"]
-                worker = User(
-                    username=email_address,
-                    email=email_address,
-                    display_name=invite_form.cleaned_data["display_name"],
-                    role=User.Role.ASSISTANT,
-                    auth_method=User.AuthMethod.GOOGLE,
-                    executive=request.user,
-                )
-                # No password exists for this account at all, so there is
-                # nothing to leak, guess or reuse.
-                worker.set_unusable_password()
-                worker.save()
-                messages.success(
-                    request,
-                    f"{email_address} can now sign in with Google as your "
-                    "assistant. Send them the site link — there is no password "
-                    "to share.",
-                )
-                return redirect("exec_workers")
-        else:
-            form = WorkerCreateForm(request.POST)
-            if form.is_valid():
-                worker = User(
-                    username=form.cleaned_data["username"],
-                    display_name=form.cleaned_data["display_name"],
-                    role=User.Role.ASSISTANT,
-                    auth_method=User.AuthMethod.PASSWORD,
-                    executive=request.user,
-                )
-                worker.set_password(form.cleaned_data["password"])
-                worker.save()
-                messages.success(
-                    request,
-                    f"Worker account “{worker.username}” created. Share the "
-                    "username and password with your assistant.",
-                )
-                return redirect("exec_workers")
+        form = WorkerCreateForm(request.POST)
+        if form.is_valid():
+            worker = User(
+                username=form.cleaned_data["username"],
+                display_name=form.cleaned_data["display_name"],
+                role=User.Role.ASSISTANT,
+                executive=request.user,
+            )
+            worker.set_password(form.cleaned_data["password"])
+            worker.save()
+            messages.success(
+                request,
+                f"Worker account “{worker.username}” created. Share the username "
+                "and password with your assistant.",
+            )
+            return redirect("exec_workers")
+    else:
+        form = WorkerCreateForm()
 
     return render(
         request,
         "executive/workers.html",
-        {
-            "form": form,
-            "invite_form": invite_form,
-            "workers": request.user.assistants.order_by("username"),
-        },
+        {"form": form, "workers": request.user.assistants.order_by("username")},
     )
 
 
 @executive_required
 def exec_worker_password(request, pk):
     worker = get_object_or_404(request.user.assistants, pk=pk)
-    if worker.signs_in_with_google:
-        messages.error(
-            request,
-            f"{worker.username} signs in with Google, so there is no password "
-            "to change.",
-        )
-        return redirect("exec_workers")
     if request.method == "POST":
         form = WorkerPasswordForm(request.POST)
         if form.is_valid():

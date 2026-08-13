@@ -107,40 +107,6 @@ class SignatureForm(forms.ModelForm):
         }
 
 
-class AssistantInviteForm(forms.Form):
-    """An executive granting an assistant access by their Google address.
-
-    No password is ever created or shared — Google vouches that the person
-    signing in controls that mailbox.
-    """
-
-    email = forms.EmailField(
-        label="Assistant's Google email",
-        widget=forms.EmailInput(
-            attrs={"class": "form-control", "placeholder": "assistant@gmail.com"}
-        ),
-        help_text="Must be the address of a Google account (Gmail or Workspace).",
-    )
-    display_name = forms.CharField(
-        max_length=200,
-        required=False,
-        label="Name (optional)",
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-    )
-
-    def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
-        existing = User.objects.filter(email__iexact=email).first()
-        if existing:
-            if existing.is_executive:
-                raise ValidationError(
-                    "That address already has an executive account, so it "
-                    "cannot also be an assistant."
-                )
-            raise ValidationError("That person already has an assistant account.")
-        return email
-
-
 class WorkerCreateForm(forms.Form):
     """An executive issuing credentials for their assistant."""
 
