@@ -2,11 +2,11 @@
 # Everything below is created for you except the two Google secrets, which
 # Render will prompt for on first deploy.
 
-databases:
-  - name: mailsend-db
-    databaseName: mailsend
-    user: mailsend
-    plan: free
+# No `databases:` block on purpose. Render's free Postgres expires 30 days
+# after creation and only one can be active per workspace, so the database
+# lives on Neon instead (permanent free tier). Set DATABASE_URL in the Render
+# dashboard to the Neon connection string — it is a secret and must never be
+# committed here.
 
 services:
   - type: web
@@ -30,10 +30,10 @@ services:
         value: America/Chicago
       - key: WEB_CONCURRENCY
         value: "2"
+      # Paste the Neon connection string here in the Render dashboard.
+      # Keep the ?sslmode=require suffix — Neon rejects unencrypted connections.
       - key: DATABASE_URL
-        fromDatabase:
-          name: mailsend-db
-          property: connectionString
+        sync: false
       # Prompted on first deploy — from the Google Cloud console.
       - key: GOOGLE_CLIENT_ID
         sync: false
