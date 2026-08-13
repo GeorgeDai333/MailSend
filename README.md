@@ -58,8 +58,13 @@ else's address. Unknown placeholders render as empty rather than leaking
 
 Ticking "send automatically once the send date passes" lets the
 `send_due` management command deliver a message without the executive
-clicking anything. That command runs every 10 minutes as a Render cron job.
-Messages left unticked always wait for a human.
+clicking anything. Messages left unticked always wait for a human.
+
+This needs a scheduler to run `python manage.py send_due` periodically. Render
+cron jobs have no free tier, so that block is **commented out** in
+`render.yaml` — uncomment it to enable (it's billed). Until you do, the
+checkbox has no effect and everything is sent by clicking, which is the
+behaviour the original spec describes anyway.
 
 ---
 

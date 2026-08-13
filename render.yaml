@@ -46,30 +46,37 @@ services:
       - key: GOOGLE_ALLOWED_EMAILS
         sync: false
 
-  # Sends drafts whose "send automatically" box is ticked once their date
-  # passes. Remove this block if you only ever want manual sending.
-  - type: cron
-    name: mailsend-scheduler
-    runtime: python
-    plan: starter
-    schedule: "*/10 * * * *"
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python manage.py send_due"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.13.5"
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          name: mailsend
-          type: web
-          envVarKey: DJANGO_SECRET_KEY
-      - key: DJANGO_DEBUG
-        value: "False"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: mailsend-db
-          property: connectionString
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
+  # OPTIONAL — the automatic scheduler.
+  #
+  # Everything above runs on Render's free tier. Cron jobs do NOT have a free
+  # tier, so this block is commented out to keep the blueprint free to deploy.
+  # Without it the app works fully; the executive just sends by clicking, and
+  # the "send automatically once the send date passes" checkbox has no effect.
+  #
+  # Uncomment to enable unattended scheduled sending (billed by Render).
+  #
+  # - type: cron
+  #   name: mailsend-scheduler
+  #   runtime: python
+  #   plan: starter
+  #   schedule: "*/10 * * * *"
+  #   buildCommand: "pip install -r requirements.txt"
+  #   startCommand: "python manage.py send_due"
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: "3.13.5"
+  #     - key: DJANGO_SECRET_KEY
+  #       fromService:
+  #         name: mailsend
+  #         type: web
+  #         envVarKey: DJANGO_SECRET_KEY
+  #     - key: DJANGO_DEBUG
+  #       value: "False"
+  #     - key: DATABASE_URL
+  #       fromDatabase:
+  #         name: mailsend-db
+  #         property: connectionString
+  #     - key: GOOGLE_CLIENT_ID
+  #       sync: false
+  #     - key: GOOGLE_CLIENT_SECRET
+  #       sync: false
