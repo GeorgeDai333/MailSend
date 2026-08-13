@@ -16,11 +16,31 @@ anywhere in the interface.
 
 | | Executive | Assistant ("worker") |
 |---|---|---|
-| Signs in with | Google OAuth | Username + password issued by the executive |
+| Signs in with | Google OAuth | Google OAuth *or* a username + password |
+| Google scopes requested | identity + `gmail.send` | identity only |
 | Can draft & edit | Yes | Yes |
 | Can delete | Yes | Yes |
 | **Can send** | **Yes** | **No — enforced server-side** |
 | Sees | All mail for their mailbox | Only drafts they created |
+
+### Giving an assistant access
+
+Two options, under **Workers**:
+
+**Invite by Google address** (recommended). Enter the assistant's Google email;
+they then sign in with the Google button. No password is ever created, so there
+is nothing to share over chat, nothing to leak and nothing to reset. If they
+leave, remove the account and their access is gone immediately.
+
+Assistants are asked for **identity scopes only** — MailSend never requests
+access to the assistant's own mailbox, and their consent screen carries no
+sensitive-scope warning.
+
+**Username and password**, for an assistant without a Google account. Works
+exactly as before.
+
+Either way the assistant cannot send. That is enforced in the view layer, not
+by hiding a button.
 
 Mail is sent through the Gmail API using the executive's own OAuth token, so it
 comes from their real address, threads normally, and lands in the recipient's
@@ -217,13 +237,20 @@ GOOGLE_REDIRECT_URI=https://<your-service>.onrender.com/google/callback/
 `GOOGLE_REDIRECT_URI` must match the environment it's running in — the
 localhost value locally, the Render value on Render.
 
-Optionally lock down who can create an executive account:
+Lock down who can create an executive account:
 
 ```
 GOOGLE_ALLOWED_EMAILS=boss@company.com,you@company.com
 ```
 
-Leave it unset and anyone with a Google account can sign up.
+**Leave this unset and anyone with a Google account who finds the URL becomes an
+executive** — with their own mailbox, their own workers and their own send
+button. They can't touch anyone else's mail, but they shouldn't have an account
+at all. Set it.
+
+The allowlist gates *self-signup only*. An assistant invited by an executive can
+always sign in, whether or not their address is listed — otherwise inviting
+someone would silently fail.
 
 ### 6. Publish the app — don't leave it in Testing
 

@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head"><h1>Workers</h1></div>
 <p class="subtitle">
-  Create a login for your assistant. They can draft, edit and delete messages for
+  Give your assistant access. They can draft, edit and delete messages for
   {{ user.email }} — they can never send one.
 </p>
 
@@ -12,14 +12,26 @@
   <h2>Worker accounts</h2>
   {% if workers %}
     <table class="data">
-      <tr><th>Username</th><th>Name</th><th>Drafts</th><th></th></tr>
+      <tr><th>Account</th><th>Name</th><th>Sign-in</th><th>Drafts</th><th></th></tr>
       {% for worker in workers %}
         <tr>
           <td class="mono">{{ worker.username }}</td>
           <td>{{ worker.display_name|default:"—" }}</td>
+          <td>
+            {% if worker.signs_in_with_google %}
+              <span class="badge badge-due">Google</span>
+              {% if worker.invitation_pending %}
+                <span class="badge badge-future">Not signed in yet</span>
+              {% endif %}
+            {% else %}
+              <span class="badge badge-clip">Password</span>
+            {% endif %}
+          </td>
           <td>{{ worker.drafted_emails.count }}</td>
           <td style="text-align:right;">
-            <a class="btn" href="{% url 'exec_worker_password' worker.pk %}">Change password</a>
+            {% if not worker.signs_in_with_google %}
+              <a class="btn" href="{% url 'exec_worker_password' worker.pk %}">Change password</a>
+            {% endif %}
             <form class="inline-form" method="post" action="{% url 'exec_worker_delete' worker.pk %}"
                   onsubmit="return confirm('Remove this worker account? Their drafts are removed too.');">
               {% csrf_token %}
@@ -35,7 +47,36 @@
 </div>
 
 <div class="panel">
-  <h2>Create a worker account</h2>
+  <h2>Invite by Google account</h2>
+  <p class="help" style="margin-bottom:16px;">
+    Recommended. Enter your assistant's Google address and they can sign in with
+    the Google button — no password is ever created, so there is nothing to
+    share, leak or reset. They are only asked for their name and email; MailSend
+    never requests access to <em>their</em> mail.
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    {% if invite_form.non_field_errors %}<div class="errors">{{ invite_form.non_field_errors }}</div>{% endif %}
+    <div class="field">
+      <label for="{{ invite_form.email.id_for_label }}">{{ invite_form.email.label }}</label>
+      {{ invite_form.email }}
+      <div class="help">{{ invite_form.email.help_text }}</div>
+      {% if invite_form.email.errors %}<div class="errors">{{ invite_form.email.errors }}</div>{% endif %}
+    </div>
+    <div class="field">
+      <label for="{{ invite_form.display_name.id_for_label }}">{{ invite_form.display_name.label }}</label>
+      {{ invite_form.display_name }}
+    </div>
+    <button type="submit" name="invite" value="1" class="btn btn-primary btn-lg">Give access</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Or create a username and password</h2>
+  <p class="help" style="margin-bottom:16px;">
+    For an assistant who doesn't have a Google account. You'll need to send them
+    the password yourself.
+  </p>
   <form method="post">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="errors">{{ form.non_field_errors }}</div>{% endif %}

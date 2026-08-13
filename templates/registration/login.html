@@ -3,8 +3,19 @@
 
 {% block content %}
 <div class="container narrow" style="padding:0;">
+  {% if google_configured %}
+    <div class="panel" style="text-align:center;">
+      <h2>Assistant sign-in</h2>
+      <p class="help" style="margin-bottom:16px;">
+        If your executive gave you access using your Google address, sign in here.
+        MailSend only sees your name and email — it never asks for access to your mail.
+      </p>
+      <a class="btn btn-google" href="{% url 'google_start' %}?role=assistant">Sign in with Google</a>
+    </div>
+  {% endif %}
+
   <div class="panel">
-    <h2>Assistant sign-in</h2>
+    <h2>Assistant sign-in with a password</h2>
     <p class="help" style="margin-bottom:18px;">Use the worker username and password your
        executive gave you.</p>
 

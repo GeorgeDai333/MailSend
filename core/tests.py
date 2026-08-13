@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from . import google_oauth
 from .models import Attachment, Email, GoogleCredential, User
 
 
@@ -397,6 +398,119 @@ class ScheduledSendCommandTests(TestCase):
         self.assertEqual(sent, [due_auto.pk])
         self.assertNotIn(due_manual.pk, sent)
         self.assertNotIn(future_auto.pk, sent)
+
+
+class GoogleAssistantTests(TestCase):
+    """Assistants invited by Google address rather than issued a password."""
+
+    def setUp(self):
+        self.executive = make_executive()
+        self.client.force_login(self.executive)
+
+    def _invite(self, email="helper@gmail.com"):
+        return self.client.post(
+            reverse("exec_workers"),
+            {"invite": "1", "email": email, "display_name": "Helper"},
+            follow=True,
+        )
+
+    def _sign_in_as(self, email, name="Helper"):
+        """Drive the real callback with Google's network calls stubbed."""
+        self.client.logout()
+        session = self.client.session
+        session["google_oauth_state"] = "state123"
+        session.save()
+        with mock.patch.object(
+            google_oauth, "exchange_code", return_value={"access_token": "at"}
+        ), mock.patch.object(
+            google_oauth, "fetch_userinfo", return_value={"email": email, "name": name}
+        ):
+            return self.client.get(
+                reverse("google_callback") + "?code=abc&state=state123", follow=True
+            )
+
+    def test_invited_assistant_is_created_without_a_password(self):
+        self._invite()
+        worker = User.objects.get(email="helper@gmail.com")
+        self.assertEqual(worker.role, User.Role.ASSISTANT)
+        self.assertEqual(worker.executive, self.executive)
+        self.assertEqual(worker.auth_method, User.AuthMethod.GOOGLE)
+        self.assertFalse(worker.has_usable_password())
+        self.assertTrue(worker.invitation_pending)
+
+    def test_invited_assistant_can_sign_in_with_google(self):
+        self._invite()
+        response = self._sign_in_as("helper@gmail.com")
+        self.assertEqual(response.redirect_chain[-1][0], reverse("assistant_dashboard"))
+        worker = User.objects.get(email="helper@gmail.com")
+        self.assertEqual(worker.role, User.Role.ASSISTANT)
+        self.assertFalse(worker.invitation_pending)
+
+    def test_assistant_google_login_stores_no_gmail_tokens(self):
+        """An assistant's grant is identity-only and must not be retained."""
+        self._invite()
+        self._sign_in_as("helper@gmail.com")
+        worker = User.objects.get(email="helper@gmail.com")
+        self.assertFalse(GoogleCredential.objects.filter(user=worker).exists())
+
+    def test_assistant_signing_in_still_cannot_send(self):
+        self._invite()
+        email = make_email(self.executive, self.executive, days_offset=-1)
+        self._sign_in_as("helper@gmail.com")
+        response = self.client.post(reverse("exec_send_one", args=[email.pk]))
+        self.assertEqual(response.status_code, 403)
+        email.refresh_from_db()
+        self.assertEqual(email.status, Email.Status.DRAFT)
+
+    def test_assistant_start_url_requests_identity_scopes_only(self):
+        response = self.client.get(reverse("google_start") + "?role=assistant")
+        self.assertNotIn("gmail.send", response.url)
+        response = self.client.get(reverse("google_start"))
+        self.assertIn("gmail.send", response.url)
+
+    def test_cannot_invite_an_existing_executive(self):
+        response = self._invite(self.executive.email)
+        self.assertContains(response, "already has an executive account")
+        self.assertEqual(self.executive.assistants.count(), 0)
+
+    def test_cannot_invite_the_same_person_twice(self):
+        self._invite()
+        response = self._invite()
+        self.assertContains(response, "already has an assistant account")
+        self.assertEqual(self.executive.assistants.count(), 1)
+
+    def test_allowlist_does_not_block_an_invited_assistant(self):
+        """The allowlist gates new executive sign-ups, not invited assistants."""
+        self._invite()
+        with self.settings(GOOGLE_ALLOWED_EMAILS=["boss@example.com"]):
+            response = self._sign_in_as("helper@gmail.com")
+        self.assertEqual(response.redirect_chain[-1][0], reverse("assistant_dashboard"))
+
+    def test_allowlist_still_blocks_an_uninvited_stranger(self):
+        with self.settings(GOOGLE_ALLOWED_EMAILS=["boss@example.com"]):
+            response = self._sign_in_as("stranger@gmail.com")
+        self.assertContains(response, "not permitted")
+        self.assertFalse(User.objects.filter(email="stranger@gmail.com").exists())
+
+    def test_password_worker_cannot_sign_in_via_google(self):
+        make_assistant(self.executive, username="pw@gmail.com")
+        User.objects.filter(username="pw@gmail.com").update(email="pw@gmail.com")
+        response = self._sign_in_as("pw@gmail.com")
+        self.assertContains(response, "username and password")
+
+    def test_no_password_change_page_for_google_assistants(self):
+        self._invite()
+        worker = User.objects.get(email="helper@gmail.com")
+        response = self.client.get(
+            reverse("exec_worker_password", args=[worker.pk]), follow=True
+        )
+        self.assertContains(response, "no password to change")
+
+    def test_deactivated_assistant_is_refused(self):
+        self._invite()
+        User.objects.filter(email="helper@gmail.com").update(is_active=False)
+        response = self._sign_in_as("helper@gmail.com")
+        self.assertContains(response, "disabled")
 
 
 class AuthFlowTests(TestCase):

@@ -25,12 +25,15 @@ def is_configured():
     return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
 
 
-def build_auth_url(state):
-    """URL to send the executive to for consent.
+def build_auth_url(state, scopes=None):
+    """URL to send the user to for consent.
 
     `access_type=offline` plus `prompt=consent` is what makes Google hand back
     a refresh token — without it we could only send while the user is actively
     signed in, which defeats scheduled sending.
+
+    `scopes` defaults to the full executive set; pass GOOGLE_BASIC_SCOPES for
+    an assistant so they are never asked to grant Gmail access.
     """
     from urllib.parse import urlencode
 
@@ -38,7 +41,7 @@ def build_auth_url(state):
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": settings.GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope": " ".join(settings.GOOGLE_SCOPES),
+        "scope": " ".join(scopes or settings.GOOGLE_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
         "include_granted_scopes": "true",
