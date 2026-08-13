@@ -141,25 +141,32 @@ Go to <https://console.cloud.google.com>, create a project (call it MailSend).
 
 Nothing can send mail until this is switched on.
 
-### 3. Configure the OAuth consent screen
+### 3. Configure the consent screen
 
-**APIs & Services → OAuth consent screen**
+This lives under **Google Auth Platform** in the console sidebar (Google moved
+it out of "APIs & Services"; the old menu path no longer exists). It's split
+into several pages:
 
-- User type: **External** (unless everyone using it is on the same Google
-  Workspace, in which case choose Internal and skip the test-user step below).
-- Fill in app name, your support email and developer contact email.
-- On the **Scopes** step, add:
-  - `openid`
-  - `.../auth/userinfo.email`
-  - `.../auth/userinfo.profile`
-  - `https://www.googleapis.com/auth/gmail.send`
+**Branding** — app name, user support email, developer contact email.
+
+**Audience** — user type **External**, unless everyone signing in is on the
+same Google Workspace, in which case choose Internal and skip the test-user
+step below.
+
+**Data Access** — this is where scopes live. Add:
+
+- `openid`
+- `.../auth/userinfo.email`
+- `.../auth/userinfo.profile`
+- `https://www.googleapis.com/auth/gmail.send`
 
 `gmail.send` is the one that matters — it grants send-only access. It cannot
 read the mailbox, which is deliberate: MailSend never needs to.
 
 ### 4. Create the OAuth client credentials
 
-**APIs & Services → Credentials → Create Credentials → OAuth client ID**
+**Google Auth Platform → Clients → Create client** (equivalently
+**APIs & Services → Credentials → Create Credentials → OAuth client ID**)
 
 - Application type: **Web application**
 - **Authorised redirect URIs** — add both, exactly, including the trailing slash:
@@ -198,9 +205,9 @@ Leave it unset and anyone with a Google account can sign up.
 ### 6. Add test users while the app is unverified
 
 An External consent screen starts in **Testing** mode. Under
-**Audience → Test users**, add every Google account that will sign in —
-including your boss's. Without this they get "app has not completed
-verification" and are blocked.
+**Google Auth Platform → Audience → Test users**, add every Google account that
+will sign in — including your boss's. Without this they get "app has not
+completed verification" and are blocked.
 
 In Testing mode users see an "unverified app" interstitial: they click
 **Advanced → Go to MailSend (unsafe)** to continue. That warning is expected and
