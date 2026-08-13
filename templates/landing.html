@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero">
+  <h1>MailSend</h1>
+  <p>Your assistant drafts, assembles, and schedules your email. You review it and send
+     it from your own Gmail account with one click. Your assistant never gets your password,
+     and never gets the ability to send.</p>
+  {% if google_configured %}
+    <a class="btn btn-google" href="{% url 'google_start' %}">Sign in with Google</a>
+  {% else %}
+    <div class="notice" style="max-width:560px;margin:0 auto 16px;text-align:left;">
+      Google sign-in isn’t configured on this server yet. Add <span class="mono">GOOGLE_CLIENT_ID</span>
+      and <span class="mono">GOOGLE_CLIENT_SECRET</span> to the <span class="mono">.env</span> file.
+    </div>
+  {% endif %}
+  <p style="margin-top:18px;font-size:14px;">
+    Working as an assistant? <a href="{% url 'login' %}">Sign in with your worker account</a>.
+  </p>
+</div>
+
+<div class="cards">
+  <div class="panel">
+    <h2>Delegate the prep work</h2>
+    <p class="help" style="font-size:14px;">Your assistant fills in To, CC, BCC, the subject,
+       the body, attachments, and a send date — everything except the send button.</p>
+  </div>
+  <div class="panel">
+    <h2>Send in your own voice</h2>
+    <p class="help" style="font-size:14px;">Mail goes out through your Google account, from
+       your address, with your signature. Recipients see a normal email from you.</p>
+  </div>
+  <div class="panel">
+    <h2>Queue weeks ahead</h2>
+    <p class="help" style="font-size:14px;">Drafts can carry any future send date. Log in when
+       it suits you and clear everything due with a single click.</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ title }}</h1>
+  <div class="spacer"></div>
+  <a class="btn" href="{% url 'home' %}">Back to outbox</a>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="panel">
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="errors">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="field">
+    <label for="{{ form.to.id_for_label }}">To</label>
+    {{ form.to }}
+    <div class="help">Separate multiple addresses with commas.</div>
+    {% if form.to.errors %}<div class="errors">{{ form.to.errors }}</div>{% endif %}
+  </div>
+
+  <div class="grid-2">
+    <div class="field">
+      <label for="{{ form.cc.id_for_label }}">CC</label>
+      {{ form.cc }}
+      {% if form.cc.errors %}<div class="errors">{{ form.cc.errors }}</div>{% endif %}
+    </div>
+    <div class="field">
+      <label for="{{ form.bcc.id_for_label }}">BCC</label>
+      {{ form.bcc }}
+      {% if form.bcc.errors %}<div class="errors">{{ form.bcc.errors }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="{{ form.subject.id_for_label }}">Subject</label>
+    {{ form.subject }}
+    {% if form.subject.errors %}<div class="errors">{{ form.subject.errors }}</div>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="{{ form.body.id_for_label }}">Message</label>
+    {{ form.body }}
+    {% if form.body.errors %}<div class="errors">{{ form.body.errors }}</div>{% endif %}
+  </div>
+
+  <div class="grid-2">
+    <div class="field">
+      <label for="{{ form.send_date.id_for_label }}">Send date</label>
+      {{ form.send_date }}
+      <div class="help">{{ form.send_date.help_text }}</div>
+      {% if form.send_date.errors %}<div class="errors">{{ form.send_date.errors }}</div>{% endif %}
+    </div>
+    <div class="field">
+      <label>Attachments</label>
+      <input type="file" name="attachments" multiple class="form-control">
+      <div class="help">Files are attached to the message when it is sent.</div>
+    </div>
+  </div>
+
+  {% if email and email.attachments.all %}
+    <div class="field">
+      <label>Attached already</label>
+      {% for attachment in email.attachments.all %}
+        <div class="attachment-row">
+          <a href="{% url 'attachment_download' attachment.pk %}">📎 {{ attachment.original_name }}</a>
+          <span class="badge badge-clip">{{ attachment.human_size }}</span>
+          <button form="detach-{{ attachment.pk }}" class="btn btn-danger" type="submit">Remove</button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="check-row">
+    {{ form.auto_send }}
+    <label for="{{ form.auto_send.id_for_label }}">{{ form.auto_send.label }}</label>
+  </div>
+
+  <div class="check-row">
+    {{ form.is_mail_merge }}
+    <label for="{{ form.is_mail_merge.id_for_label }}">{{ form.is_mail_merge.label }}</label>
+  </div>
+
+  <div class="field" id="merge-fields">
+    <label for="{{ form.merge_csv.id_for_label }}">{{ form.merge_csv.label }}</label>
+    {{ form.merge_csv }}
+    <div class="help">
+      One row per recipient, with a column named <span class="mono">email</span>.
+      Any other column can be dropped into the subject or body as
+      <span class="mono">{% verbatim %}{{column_name}}{% endverbatim %}</span> — each recipient
+      gets their own personalised copy, sent individually.
+    </div>
+    {% if form.merge_csv.errors %}<div class="errors">{{ form.merge_csv.errors }}</div>{% endif %}
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save draft</button>
+    {% if email %}
+      <a class="btn" href="{% url 'email_preview' email.pk %}">Preview</a>
+    {% endif %}
+    <a class="btn" href="{% url 'home' %}">Cancel</a>
+    {% if not user.is_executive %}
+      <span class="help" style="margin-left:auto;">Assistants can save drafts, not send them.</span>
+    {% endif %}
+  </div>
+</form>
+
+{% if email %}
+  {% for attachment in email.attachments.all %}
+    <form id="detach-{{ attachment.pk }}" method="post"
+          action="{% url 'attachment_delete' attachment.pk %}">{% csrf_token %}</form>
+  {% endfor %}
+{% endif %}
+
+<script>
+  // Only show the CSV picker when the draft is actually a mail merge.
+  (function () {
+    var toggle = document.getElementById('id_is_mail_merge');
+    var fields = document.getElementById('merge-fields');
+    if (!toggle || !fields) return;
+    function sync() { fields.style.display = toggle.checked ? '' : 'none'; }
+    toggle.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

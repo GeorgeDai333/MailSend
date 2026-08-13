@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Preview — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Preview</h1>
+  <div class="spacer"></div>
+  {% if email.is_editable %}<a class="btn" href="{% url 'email_edit' email.pk %}">Edit</a>{% endif %}
+  <a class="btn" href="{% url 'home' %}">Back</a>
+</div>
+
+<div class="panel">
+  <table class="data">
+    <tr><th>From</th><td>{{ email.executive.email }}</td></tr>
+    <tr><th>Send date</th><td>{{ email.send_date|date:"F j, Y g:i A" }}</td></tr>
+    <tr><th>Status</th><td>{{ email.get_status_display }}</td></tr>
+    {% if email.attachments.all %}
+      <tr><th>Attachments</th><td>
+        {% for attachment in email.attachments.all %}<a href="{% url 'attachment_download' attachment.pk %}">📎 {{ attachment.original_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+      </td></tr>
+    {% endif %}
+  </table>
+</div>
+
+{% if email.is_mail_merge %}
+  <p class="subtitle">
+    Mail merge — {{ email.merge_recipient_count }} recipient(s). Each gets their own message.
+    Showing the first {{ previews|length }}.
+  </p>
+  {% for preview in previews %}
+    <div class="panel">
+      <table class="data">
+        <tr><th>To</th><td>{{ preview.to }}</td></tr>
+        <tr><th>Subject</th><td>{{ preview.subject }}</td></tr>
+      </table>
+      <div class="preview-body" style="margin-top:12px;">{{ preview.body }}{% if email.executive.signature %}
+
+{{ email.executive.signature }}{% endif %}</div>
+    </div>
+  {% empty %}
+    <div class="notice">No readable rows in the CSV. It needs a header row and an
+      <span class="mono">email</span> column.</div>
+  {% endfor %}
+{% else %}
+  <div class="panel">
+    <table class="data">
+      <tr><th>To</th><td>{{ email.to|default:"—" }}</td></tr>
+      {% if email.cc %}<tr><th>CC</th><td>{{ email.cc }}</td></tr>{% endif %}
+      {% if email.bcc %}<tr><th>BCC</th><td>{{ email.bcc }}</td></tr>{% endif %}
+      <tr><th>Subject</th><td>{{ email.subject|default:"(no subject)" }}</td></tr>
+    </table>
+    <div class="preview-body" style="margin-top:12px;">{{ email.body }}{% if email.executive.signature %}
+
+{{ email.executive.signature }}{% endif %}</div>
+  </div>
+{% endif %}
+{% endblock %}

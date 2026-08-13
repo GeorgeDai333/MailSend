@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Sent — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>Sent</h1></div>
+<p class="subtitle">Messages your executive has already sent.</p>
+
+<div class="list">
+  {% for email in emails %}
+    <div class="row">
+      <span class="date">{{ email.sent_at|date:"M j, Y g:i A"|default:"—" }}</span>
+      <span class="to">{{ email.to_summary }}</span>
+      <span class="subject">{{ email.summary_subject }}</span>
+      <span class="badge badge-sent">Sent</span>
+    </div>
+  {% empty %}
+    <div class="empty">Nothing has been sent yet.</div>
+  {% endfor %}
+</div>
+{% endblock %}

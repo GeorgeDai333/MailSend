@@ -1,0 +1,75 @@
+# Render Blueprint. In the Render dashboard: New → Blueprint → point at this repo.
+# Everything below is created for you except the two Google secrets, which
+# Render will prompt for on first deploy.
+
+databases:
+  - name: mailsend-db
+    databaseName: mailsend
+    user: mailsend
+    plan: free
+
+services:
+  - type: web
+    name: mailsend
+    runtime: python
+    plan: free
+    # The public URL is https://<name>.onrender.com and it stays fixed as long
+    # as this service name does not change — which is what lets the Google
+    # OAuth redirect URI stay constant.
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn mailsend.wsgi:application --workers 2 --timeout 120"
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.5"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_TIME_ZONE
+        value: America/Chicago
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mailsend-db
+          property: connectionString
+      # Prompted on first deploy — from the Google Cloud console.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Must exactly match the Authorised redirect URI in Google Cloud.
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      # Optional: comma-separated list restricting who may sign up.
+      - key: GOOGLE_ALLOWED_EMAILS
+        sync: false
+
+  # Sends drafts whose "send automatically" box is ticked once their date
+  # passes. Remove this block if you only ever want manual sending.
+  - type: cron
+    name: mailsend-scheduler
+    runtime: python
+    plan: starter
+    schedule: "*/10 * * * *"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python manage.py send_due"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.5"
+      - key: DJANGO_SECRET_KEY
+        fromService:
+          name: mailsend
+          type: web
+          envVarKey: DJANGO_SECRET_KEY
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mailsend-db
+          property: connectionString
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

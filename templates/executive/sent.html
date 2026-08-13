@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sent — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>Sent</h1></div>
+
+<div class="list">
+  {% for email in emails %}
+    <div class="row">
+      <span class="date">{{ email.sent_at|date:"M j, Y g:i A"|default:"—" }}</span>
+      <span class="to">{{ email.to_summary }}</span>
+      <span class="subject">{{ email.summary_subject }}</span>
+      {% if email.status == 'sent' %}
+        <span class="badge badge-sent">Sent{% if email.sent_count > 1 %} ×{{ email.sent_count }}{% endif %}</span>
+      {% else %}
+        <span class="badge badge-failed">Failed</span>
+      {% endif %}
+      <span class="actions">
+        <a class="btn" href="{% url 'exec_logs' email.pk %}">Details</a>
+      </span>
+    </div>
+  {% empty %}
+    <div class="empty">Nothing has been sent yet.</div>
+  {% endfor %}
+</div>
+{% endblock %}

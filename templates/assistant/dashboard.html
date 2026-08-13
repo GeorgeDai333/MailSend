@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Outbox — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Outbox</h1>
+  <div class="spacer"></div>
+  <a class="btn btn-primary btn-lg" href="{% url 'email_create' %}">New message</a>
+</div>
+<p class="subtitle">
+  Drafts you have prepared for {{ user.executive.friendly_name }}. They will go out from
+  {{ user.executive.email }} once your executive sends them.
+</p>
+
+<div class="list">
+  {% for email in drafts %}
+    <div class="row {% if email.send_date <= now %}due{% endif %}">
+      <span class="date">{{ email.send_date|date:"M j, Y g:i A" }}</span>
+      <span class="to">{{ email.to_summary }}</span>
+      <span class="subject">{{ email.summary_subject }}</span>
+      {% if email.is_mail_merge %}
+        <span class="badge badge-merge">Merge · {{ email.merge_recipient_count }}</span>
+      {% endif %}
+      {% if email.attachments.count %}
+        <span class="badge badge-clip">📎 {{ email.attachments.count }}</span>
+      {% endif %}
+      <span class="actions">
+        <a class="btn" href="{% url 'email_edit' email.pk %}">Edit</a>
+        <form class="inline-form" method="post" action="{% url 'email_delete' email.pk %}"
+              onsubmit="return confirm('Delete this draft?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </span>
+    </div>
+  {% empty %}
+    <div class="empty">
+      <p>No drafts yet.</p>
+      <a class="btn btn-primary" href="{% url 'email_create' %}">Create the first one</a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

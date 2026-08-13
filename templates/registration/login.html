@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Sign in — MailSend{% endblock %}
+
+{% block content %}
+<div class="container narrow" style="padding:0;">
+  <div class="panel">
+    <h2>Assistant sign-in</h2>
+    <p class="help" style="margin-bottom:18px;">Use the worker username and password your
+       executive gave you.</p>
+
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="errors">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="field">
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}
+        {% if form.username.errors %}<div class="errors">{{ form.username.errors }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        {% if form.password.errors %}<div class="errors">{{ form.password.errors }}</div>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg">Sign in</button>
+    </form>
+  </div>
+
+  <div class="panel" style="text-align:center;">
+    <h2>Executive sign-in</h2>
+    <p class="help" style="margin-bottom:16px;">Executives sign in with the Google account
+       that mail is sent from.</p>
+    {% if google_configured %}
+      <a class="btn btn-google" href="{% url 'google_start' %}">Sign in with Google</a>
+    {% else %}
+      <p class="help">Google sign-in isn’t configured on this server yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Signature — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head"><h1>Signature</h1></div>
+<div class="panel">
+  <form method="post">
+    {% csrf_token %}
+    <div class="field">
+      <label for="{{ form.signature.id_for_label }}">{{ form.signature.label }}</label>
+      {{ form.signature }}
+      <div class="help">{{ form.signature.help_text }}</div>
+      {% if form.signature.errors %}<div class="errors">{{ form.signature.errors }}</div>{% endif %}
+    </div>
+    <button type="submit" class="btn btn-primary">Save signature</button>
+  </form>
+</div>
+{% endblock %}

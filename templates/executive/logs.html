@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Delivery log — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Delivery log</h1>
+  <div class="spacer"></div>
+  <a class="btn" href="{% url 'exec_sent' %}">Back to sent</a>
+</div>
+<p class="subtitle">{{ email.summary_subject }}</p>
+
+{% if email.error %}
+  <div class="notice">{{ email.error|linebreaksbr }}</div>
+{% endif %}
+
+<div class="panel">
+  <table class="data">
+    <tr><th>When</th><th>Recipient</th><th>Result</th><th>Detail</th></tr>
+    {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at|date:"M j, Y g:i A" }}</td>
+        <td>{{ log.recipient }}</td>
+        <td>
+          {% if log.succeeded %}
+            <span class="badge badge-sent">OK</span>
+          {% else %}
+            <span class="badge badge-failed">Failed</span>
+          {% endif %}
+        </td>
+        <td class="mono">{{ log.detail|default:log.gmail_message_id }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="help">No delivery attempts recorded.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

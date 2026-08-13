@@ -1,0 +1,10 @@
+Django>=5.1,<6.0
+google-auth>=2.35
+google-auth-oauthlib>=1.2
+google-api-python-client>=2.150
+requests>=2.32
+python-dotenv>=1.0
+whitenoise>=6.7
+gunicorn>=23.0
+dj-database-url>=2.3
+psycopg[binary]>=3.2

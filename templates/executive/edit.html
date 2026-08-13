@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ scope_label }} — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ scope_label }}</h1>
+  <div class="spacer"></div>
+  <a class="btn" href="{% url 'exec_dashboard' %}">Back to dashboard</a>
+</div>
+<p class="subtitle">
+  {% if scope == 'current' %}
+    Every draft dated today or earlier, shown one after another. Editing only — send from the dashboard.
+  {% elif scope == 'future' %}
+    Every draft dated after today, shown one after another. Editing only — send from the dashboard.
+  {% else %}
+    Every draft, past and future, shown one after another. Editing only — send from the dashboard.
+  {% endif %}
+</p>
+
+{% if count %}
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ formset.management_form }}
+
+  {% for form in formset %}
+    <div class="stack-card">
+      {{ form.id }}
+      <h3>Message {{ forloop.counter }} of {{ count }}</h3>
+      {% if form.non_field_errors %}<div class="errors">{{ form.non_field_errors }}</div>{% endif %}
+
+      <div class="field">
+        <label for="{{ form.to.id_for_label }}">To</label>
+        {{ form.to }}
+        {% if form.to.errors %}<div class="errors">{{ form.to.errors }}</div>{% endif %}
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="{{ form.cc.id_for_label }}">CC</label>
+          {{ form.cc }}
+        </div>
+        <div class="field">
+          <label for="{{ form.bcc.id_for_label }}">BCC</label>
+          {{ form.bcc }}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="{{ form.subject.id_for_label }}">Subject</label>
+        {{ form.subject }}
+        {% if form.subject.errors %}<div class="errors">{{ form.subject.errors }}</div>{% endif %}
+      </div>
+
+      <div class="field">
+        <label for="{{ form.body.id_for_label }}">Message</label>
+        {{ form.body }}
+        {% if form.body.errors %}<div class="errors">{{ form.body.errors }}</div>{% endif %}
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="{{ form.send_date.id_for_label }}">Send date</label>
+          {{ form.send_date }}
+          {% if form.send_date.errors %}<div class="errors">{{ form.send_date.errors }}</div>{% endif %}
+        </div>
+        <div class="field">
+          <label>Attachments</label>
+          {% if form.instance.attachments.all %}
+            {% for attachment in form.instance.attachments.all %}
+              <div class="attachment-row">📎 {{ attachment.original_name }}
+                <span class="badge badge-clip">{{ attachment.human_size }}</span>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="help">None.</div>
+          {% endif %}
+          <div class="help">
+            <a href="{% url 'email_edit' form.instance.pk %}">Open this message</a>
+            to add or remove attachments.
+          </div>
+        </div>
+      </div>
+
+      <div class="check-row">
+        {{ form.auto_send }}
+        <label for="{{ form.auto_send.id_for_label }}">{{ form.auto_send.label }}</label>
+      </div>
+
+      {% if form.instance.is_mail_merge %}
+        <div class="check-row">
+          {{ form.is_mail_merge }}
+          <label for="{{ form.is_mail_merge.id_for_label }}">{{ form.is_mail_merge.label }}</label>
+        </div>
+        <div class="field">
+          <label for="{{ form.merge_csv.id_for_label }}">{{ form.merge_csv.label }}</label>
+          {{ form.merge_csv }}
+          <div class="help">
+            {{ form.instance.merge_recipient_count }} recipient(s) in the current CSV —
+            <a href="{% url 'email_preview' form.instance.pk %}">preview</a>.
+          </div>
+        </div>
+      {% else %}
+        <div style="display:none;">{{ form.is_mail_merge }}{{ form.merge_csv }}</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <div class="sticky-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save all changes</button>
+    <a class="btn" href="{% url 'exec_dashboard' %}">Cancel</a>
+    <span class="help" style="margin-left:auto;">This page edits only. Send from the dashboard.</span>
+  </div>
+</form>
+{% else %}
+  <div class="list">
+    <div class="empty">
+      <p>No {{ scope_label|lower }} to edit.</p>
+      <a class="btn" href="{% url 'exec_dashboard' %}">Back to dashboard</a>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

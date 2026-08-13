@@ -1,0 +1,44 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}MailSend{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+<header class="navbar">
+  <a class="brand" href="{% url 'home' %}">MailSend</a>
+  <nav class="nav">
+    {% if user.is_authenticated %}
+      {% if user.is_executive %}
+        <a href="{% url 'exec_dashboard' %}" class="{% if request.resolver_match.url_name == 'exec_dashboard' %}active{% endif %}">Outbox</a>
+        <a href="{% url 'exec_sent' %}" class="{% if request.resolver_match.url_name == 'exec_sent' %}active{% endif %}">Sent</a>
+        <a href="{% url 'exec_signature' %}" class="{% if request.resolver_match.url_name == 'exec_signature' %}active{% endif %}">Signature</a>
+        <a href="{% url 'exec_workers' %}" class="{% if request.resolver_match.url_name == 'exec_workers' %}active{% endif %}">Workers</a>
+      {% else %}
+        <a href="{% url 'assistant_dashboard' %}" class="{% if request.resolver_match.url_name == 'assistant_dashboard' %}active{% endif %}">Outbox</a>
+        <a href="{% url 'assistant_sent' %}" class="{% if request.resolver_match.url_name == 'assistant_sent' %}active{% endif %}">Sent</a>
+      {% endif %}
+      <span class="who">{{ user.friendly_name }} <span class="role-chip">{{ user.get_role_display }}</span></span>
+      <a href="{% url 'logout' %}" class="muted">Log out</a>
+    {% else %}
+      <a href="{% url 'login' %}">Log in</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main class="container">
+  {% if messages %}
+    <div class="flashes">
+      {% for message in messages %}
+        <div class="flash flash-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">MailSend — drafted by the assistant, sent by the executive.</footer>
+</body>
+</html>

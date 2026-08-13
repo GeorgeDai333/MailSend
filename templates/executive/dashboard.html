@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — MailSend{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Outbox</h1>
+  <div class="spacer"></div>
+  <a class="btn" href="{% url 'exec_edit' 'current' %}">Edit current</a>
+  <a class="btn" href="{% url 'exec_edit' 'future' %}">Edit future</a>
+  <a class="btn" href="{% url 'exec_edit' 'all' %}">Edit all</a>
+  <a class="btn btn-primary" href="{% url 'email_create' %}">New message</a>
+</div>
+
+{% if not can_send %}
+  <div class="notice">
+    This account hasn’t granted MailSend permission to send Gmail yet.
+    <a href="{% url 'google_start' %}">Reconnect your Google account</a> to enable sending.
+  </div>
+{% endif %}
+
+<p class="subtitle">
+  {{ due_count }} message{{ due_count|pluralize }} due now, {{ drafts.count }} draft{{ drafts.count|pluralize }} in total.
+</p>
+
+{% if due_count %}
+  <form method="post" action="{% url 'exec_send_current' %}" style="margin-bottom:18px;"
+        onsubmit="return confirm('Send all {{ due_count }} message(s) dated today or earlier?');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary btn-lg" {% if not can_send %}disabled{% endif %}>
+      Send current messages ({{ due_count }})
+    </button>
+  </form>
+{% endif %}
+
+<div class="list">
+  {% for email in drafts %}
+    <div class="row {% if email.send_date <= now %}due{% endif %}">
+      <span class="date">{{ email.send_date|date:"M j, Y g:i A" }}</span>
+      <span class="to">{{ email.to_summary }}</span>
+      <span class="subject">{{ email.summary_subject }}</span>
+      {% if email.send_date <= now %}
+        <span class="badge badge-due">Due</span>
+      {% else %}
+        <span class="badge badge-future">Scheduled</span>
+      {% endif %}
+      {% if email.is_mail_merge %}
+        <span class="badge badge-merge">Merge · {{ email.merge_recipient_count }}</span>
+      {% endif %}
+      {% if email.attachments.count %}
+        <span class="badge badge-clip">📎 {{ email.attachments.count }}</span>
+      {% endif %}
+      <span class="actions">
+        <form class="inline-form" method="post" action="{% url 'exec_send_one' email.pk %}"
+              onsubmit="return confirm('Send “{{ email.summary_subject|escapejs }}” now?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary" {% if not can_send %}disabled{% endif %}>Send</button>
+        </form>
+        <a class="btn" href="{% url 'email_edit' email.pk %}">Edit</a>
+        <form class="inline-form" method="post" action="{% url 'email_delete' email.pk %}"
+              onsubmit="return confirm('Delete this message for you and your assistant?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </span>
+    </div>
+  {% empty %}
+    <div class="empty">
+      <p>Nothing waiting. Your assistant’s drafts will appear here.</p>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
