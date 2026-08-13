@@ -54,6 +54,30 @@ recipient receives their own individually-addressed message — nobody sees anyo
 else's address. Unknown placeholders render as empty rather than leaking
 `{{first_name}}` into a real email. Preview before sending.
 
+The header row is matched case-insensitively and trimmed, so `Email`, `email`
+and ` E-Mail ` all work. Rows with no address are skipped rather than failing
+the whole batch.
+
+**Test files** are in [`samples/`](samples/):
+
+- `mail_merge_sample.csv` — five clean rows. Try this subject and body:
+  ```
+  {{first_name}}, quick note about {{company}}
+
+  Hi {{first_name}},
+
+  Good to speak. As {{role}} at {{company}}, I thought you should see
+  {{next_step}}.
+  ```
+- `mail_merge_edge_cases.csv` — a UTF-8 BOM, padded headers, a blank line, an
+  escaped quote, a comma inside a quoted name, and a row with no address.
+  Four rows parse, three are valid recipients.
+
+Both use `@example.com` addresses, which bounce by design. To test real
+delivery, replace them with your own address — Gmail treats `you+ann@gmail.com`
+as `you@gmail.com`, so you can send the whole merge to yourself and see each
+personalised copy arrive separately.
+
 ### Scheduled sending
 
 Ticking "send automatically once the send date passes" lets the
