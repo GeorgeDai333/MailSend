@@ -96,14 +96,25 @@ attachment handling in the outgoing MIME payload, and the scheduler.
 
 ## Deploying to Render
 
-The repo contains a `render.yaml` blueprint that provisions the web service, a
-Postgres database and the scheduler cron job.
+The repo contains a `render.yaml` blueprint that provisions the web service.
+The database is external (see below) and the scheduler is opt-in.
 
 1. Push this repo to GitHub.
 2. In Render: **New → Blueprint**, select the repo, apply.
-3. Render prompts for `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
-   `GOOGLE_REDIRECT_URI`. Set these after completing the Google steps below.
+3. Render prompts for the values marked `sync: false`. Set:
+   - `DATABASE_URL` — the Neon connection string, including `?sslmode=require`
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` —
+     after completing the Google steps below
 4. Deploy. Your URL is `https://<service-name>.onrender.com`.
+
+### Why the database is not on Render
+
+Render's free Postgres **expires 30 days after creation**, and only one can be
+active per workspace. Both are fatal for a tool meant to keep running, so
+`render.yaml` deliberately has no `databases:` block. Point `DATABASE_URL` at
+any external Postgres instead — [Neon](https://neon.com)'s free plan is
+permanent and ample here. `settings.py` reads `DATABASE_URL` via
+`dj_database_url`, so no code changes are involved either way.
 
 **The URL is stable.** It's derived from the service name and does not change
 between deploys, restarts or redeploys — so it's safe to hard-code as the Google
