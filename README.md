@@ -190,7 +190,19 @@ https://<your-service>.onrender.com/google/callback/
 A mismatch here — a missing slash, `http` instead of `https` — produces
 `redirect_uri_mismatch`, which is the single most common failure.
 
-Copy the **Client ID** and **Client secret**.
+On **Create**, a dialog shows the **Client ID** and **Client secret**.
+
+> **Copy the secret before closing that dialog, or use Download JSON.**
+> Google now shows the client secret in full *only once, at creation*.
+> Afterwards the console displays just the last four characters.
+
+The client ID looks like `1234-abc.apps.googleusercontent.com`; the secret
+looks like `GOCSPX-…`.
+
+Lost the secret? Open the client under **Google Auth Platform → Clients** and
+try the **Download JSON** icon on its row. If that's unavailable, click
+**Add secret** to issue a new one and revoke the old — rotating is harmless
+as long as you update `GOOGLE_CLIENT_SECRET` wherever it's set.
 
 ### 5. Set the environment variables
 
