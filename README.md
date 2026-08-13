@@ -202,23 +202,37 @@ GOOGLE_ALLOWED_EMAILS=boss@company.com,you@company.com
 
 Leave it unset and anyone with a Google account can sign up.
 
-### 6. Add test users while the app is unverified
+### 6. Publish the app — don't leave it in Testing
 
-An External consent screen starts in **Testing** mode. Under
-**Google Auth Platform → Audience → Test users**, add every Google account that
-will sign in — including your boss's. Without this they get "app has not
-completed verification" and are blocked.
+An External consent screen starts in **Testing**, where refresh tokens
+**expire after 7 days**. That means the executive has to sign in with Google
+again every week, which is exactly the kind of friction this tool exists to
+remove.
 
-In Testing mode users see an "unverified app" interstitial: they click
-**Advanced → Go to MailSend (unsafe)** to continue. That warning is expected and
-is what the original documentation refers to. Refresh tokens in Testing mode
-expire after 7 days, so the executive will need to sign in with Google again
-about weekly.
+Under **Google Auth Platform → Audience**, click **Publish app** to move to
+*In production*. You do **not** need to complete Google's verification review
+first — you can decline the invitation to submit and stay in production,
+unverified. What that gets you:
 
-To remove both the warning and the weekly re-auth, submit the app for
-verification (**Publish app**). Because `gmail.send` is a sensitive scope,
-Google requires a review that typically takes a few weeks. Fine to defer — but
-plan for it before this is relied on day to day.
+- Refresh tokens stop expiring, so the executive stays signed in.
+- No test-user list to maintain.
+
+What it does *not* change: users still see the "Google hasn't verified this
+app" interstitial and click **Advanced → Go to MailSend (unsafe)** to continue.
+That warning is identical in Testing, so staying in Testing buys nothing.
+
+Unverified apps using sensitive scopes have a **100 new-user cap**; once 100
+distinct accounts have authorized, Google sign-in is disabled until the app is
+verified. Irrelevant for a handful of executives, but it's the reason to
+eventually submit for verification if this ever grows.
+
+**If everyone using this is on the same Google Workspace**, set the audience to
+**Internal** instead. That removes the unverified warning entirely, with no cap
+and no verification — strictly better than External for a single-organisation
+deployment.
+
+If you do stay in Testing for now, add every account that will sign in under
+**Audience → Test users**, or they are blocked outright.
 
 ### 7. Sign in
 
@@ -248,7 +262,7 @@ message.
 |---|---|
 | `redirect_uri_mismatch` | The URI in Google Cloud doesn't exactly match `GOOGLE_REDIRECT_URI`. Check the trailing slash and http vs https. |
 | "has not granted MailSend permission to send Gmail" | Gmail API not enabled, or the executive consented before `gmail.send` was added to the scope list. Sign in with Google again. |
-| "Google refused to refresh access" | Refresh token expired (7-day limit in Testing mode) or was revoked. The executive signs in with Google again. |
+| "Google refused to refresh access" | Refresh token expired or was revoked. Most often the app is still in **Testing** mode, where tokens die after 7 days — publish it. Otherwise the executive signs in with Google again. |
 | CSRF failures on every form | `DJANGO_CSRF_TRUSTED_ORIGINS` missing the site's `https://` origin. Render's own hostname is added automatically. |
 | Attachments vanished | Free-tier deploy wiped the disk. See the persistent disk note above. |
 
