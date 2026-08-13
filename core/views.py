@@ -86,6 +86,23 @@ def save_attachments(request, email):
         )
 
 
+def report_csv_change(request, form):
+    """Say out loud what uploading or clearing a merge CSV did to the draft."""
+    if getattr(form, "csv_was_cleared", False):
+        messages.info(
+            request,
+            "Recipient list removed. The To field was cleared and this is no "
+            "longer a mail merge.",
+        )
+    elif getattr(form, "recipients_loaded", 0):
+        count = form.recipients_loaded
+        messages.info(
+            request,
+            f"Loaded {count} recipient{'s' if count != 1 else ''} from the CSV "
+            "into the To field, replacing what was there.",
+        )
+
+
 # --- public / auth ----------------------------------------------------------
 def landing(request):
     if request.user.is_authenticated:
@@ -243,7 +260,7 @@ def email_create(request):
         return HttpResponseForbidden("No mailbox is linked to this account.")
 
     if request.method == "POST":
-        form = EmailForm(request.POST, request.FILES)
+        form = EmailForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             with transaction.atomic():
                 email = form.save(commit=False)
@@ -252,9 +269,10 @@ def email_create(request):
                 email.save()
                 save_attachments(request, email)
             messages.success(request, "Draft saved.")
+            report_csv_change(request, form)
             return redirect("home")
     else:
-        form = EmailForm()
+        form = EmailForm(user=request.user)
 
     return render(
         request,
@@ -268,15 +286,18 @@ def email_edit(request, pk):
     email = get_editable_email(request.user, pk)
 
     if request.method == "POST":
-        form = EmailForm(request.POST, request.FILES, instance=email)
+        form = EmailForm(
+            request.POST, request.FILES, instance=email, user=request.user
+        )
         if form.is_valid():
             with transaction.atomic():
                 form.save()
                 save_attachments(request, email)
             messages.success(request, "Changes saved.")
+            report_csv_change(request, form)
             return redirect("home")
     else:
-        form = EmailForm(instance=email)
+        form = EmailForm(instance=email, user=request.user)
 
     return render(
         request,

@@ -18,6 +18,48 @@ def split_addresses(raw):
     return [addr.strip() for addr in _ADDRESS_SPLIT.split(raw) if addr.strip()]
 
 
+# Column names accepted as the recipient address in a merge CSV.
+RECIPIENT_COLUMNS = ("email", "to", "e-mail", "email address")
+
+
+def parse_csv_rows(raw):
+    """Parse merge-CSV bytes into a list of {column: value} dicts.
+
+    Tolerates what real spreadsheet exports produce: a UTF-8 BOM, padding
+    around header names and values, and blank lines.
+    """
+    text = raw.decode("utf-8-sig", errors="replace")
+    rows = []
+    for row in csv.DictReader(io.StringIO(text)):
+        clean = {
+            (k or "").strip(): (v or "").strip()
+            for k, v in row.items()
+            if k is not None
+        }
+        if any(clean.values()):
+            rows.append(clean)
+    return rows
+
+
+def recipient_from_row(row):
+    for key, value in row.items():
+        if key.lower() in RECIPIENT_COLUMNS:
+            return value
+    return ""
+
+
+def recipients_from_csv(raw):
+    """Every usable address in a merge CSV, in file order, without duplicates."""
+    seen, addresses = set(), []
+    for row in parse_csv_rows(raw):
+        address = recipient_from_row(row)
+        key = address.lower()
+        if address and key not in seen:
+            seen.add(key)
+            addresses.append(address)
+    return addresses
+
+
 class User(AbstractUser):
     """A MailSend account.
 
@@ -209,25 +251,11 @@ class Email(models.Model):
             raw = self.merge_csv.read()
         finally:
             self.merge_csv.close()
-        text = raw.decode("utf-8-sig", errors="replace")
-        reader = csv.DictReader(io.StringIO(text))
-        rows = []
-        for row in reader:
-            clean = {
-                (k or "").strip(): (v or "").strip()
-                for k, v in row.items()
-                if k is not None
-            }
-            if any(clean.values()):
-                rows.append(clean)
-        return rows
+        return parse_csv_rows(raw)
 
     @staticmethod
     def recipient_from_row(row):
-        for key, value in row.items():
-            if key.lower() in ("email", "to", "e-mail", "email address"):
-                return value
-        return ""
+        return recipient_from_row(row)
 
     @staticmethod
     def render_template(text, row):

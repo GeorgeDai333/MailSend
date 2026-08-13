@@ -375,6 +375,164 @@ class MailMergeTests(TestCase):
         self.assertEqual(email.sent_count, 2)
 
 
+CSV_BYTES = (
+    b"email,first_name\n"
+    b"ann@example.com,Ann\n"
+    b'bob@example.com,"Smith, Bob"\n'
+)
+
+
+class MergeCsvFormTests(TestCase):
+    """Uploading, replacing and clearing the recipient CSV."""
+
+    def setUp(self):
+        self.executive = make_executive()
+        self.assistant = make_assistant(self.executive)
+        self.client.force_login(self.assistant)
+
+    def _base(self, **overrides):
+        data = {
+            "to": "",
+            "cc": "",
+            "bcc": "",
+            "subject": "Hi {{first_name}}",
+            "body": "Hello {{first_name}}",
+            "send_date": "2026-12-01T09:00",
+            "is_mail_merge": "on",
+        }
+        data.update(overrides)
+        return data
+
+    def test_upload_fills_the_to_field(self):
+        self.client.post(
+            reverse("email_create"),
+            self._base(merge_csv=SimpleUploadedFile("list.csv", CSV_BYTES)),
+        )
+        email = Email.objects.get()
+        self.assertEqual(email.to, "ann@example.com, bob@example.com")
+        self.assertTrue(email.is_mail_merge)
+
+    def test_new_upload_replaces_previous_recipients(self):
+        self.client.post(
+            reverse("email_create"),
+            self._base(merge_csv=SimpleUploadedFile("a.csv", CSV_BYTES)),
+        )
+        email = Email.objects.get()
+        replacement = b"email\ncarla@example.com\n"
+        self.client.post(
+            reverse("email_edit", args=[email.pk]),
+            self._base(merge_csv=SimpleUploadedFile("b.csv", replacement)),
+        )
+        email.refresh_from_db()
+        self.assertEqual(email.to, "carla@example.com")
+        self.assertNotIn("ann@example.com", email.to)
+
+    def test_clearing_empties_to_and_turns_off_mail_merge(self):
+        self.client.post(
+            reverse("email_create"),
+            self._base(merge_csv=SimpleUploadedFile("a.csv", CSV_BYTES)),
+        )
+        email = Email.objects.get()
+        self.assertTrue(email.merge_csv)
+
+        response = self.client.post(
+            reverse("email_edit", args=[email.pk]),
+            self._base(**{"merge_csv-clear": "on"}),
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        email.refresh_from_db()
+        self.assertFalse(email.merge_csv)
+        self.assertFalse(email.is_mail_merge)
+        self.assertEqual(email.to, "")
+        self.assertEqual(email.merge_recipient_count, 0)
+
+    def test_upload_without_an_email_column_is_rejected(self):
+        response = self.client.post(
+            reverse("email_create"),
+            self._base(
+                merge_csv=SimpleUploadedFile("bad.csv", b"name,company\nAnn,Acme\n")
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "needs a header row")
+        self.assertEqual(Email.objects.count(), 0)
+
+    def test_mail_merge_without_any_csv_is_rejected(self):
+        response = self.client.post(reverse("email_create"), self._base())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Upload a CSV")
+        self.assertEqual(Email.objects.count(), 0)
+
+    def test_duplicate_addresses_are_collapsed(self):
+        raw = b"email\nsame@example.com\nSAME@example.com\nother@example.com\n"
+        self.client.post(
+            reverse("email_create"),
+            self._base(merge_csv=SimpleUploadedFile("d.csv", raw)),
+        )
+        self.assertEqual(
+            Email.objects.get().to, "same@example.com, other@example.com"
+        )
+
+    def test_saved_csv_still_parses_after_upload(self):
+        """The form reads the upload stream, so it must rewind it."""
+        self.client.post(
+            reverse("email_create"),
+            self._base(merge_csv=SimpleUploadedFile("a.csv", CSV_BYTES)),
+        )
+        email = Email.objects.get()
+        self.assertEqual(email.merge_recipient_count, 2)
+        self.assertEqual(email.merge_preview()[1]["subject"], "Hi Smith, Bob")
+
+
+class AssistantAutoSendTests(TestCase):
+    """Only the executive may let a message go out unattended."""
+
+    def setUp(self):
+        self.executive = make_executive()
+        self.assistant = make_assistant(self.executive)
+
+    def _payload(self, **extra):
+        data = {
+            "to": "someone@example.com",
+            "cc": "",
+            "bcc": "",
+            "subject": "s",
+            "body": "b",
+            "send_date": "2026-12-01T09:00",
+        }
+        data.update(extra)
+        return data
+
+    def test_assistant_cannot_set_auto_send_even_by_posting_it(self):
+        self.client.force_login(self.assistant)
+        self.client.post(reverse("email_create"), self._payload(auto_send="on"))
+        self.assertFalse(Email.objects.get().auto_send)
+
+    def test_assistant_does_not_see_the_auto_send_control(self):
+        self.client.force_login(self.assistant)
+        response = self.client.get(reverse("email_create"))
+        self.assertNotContains(response, "send date passes")
+
+    def test_executive_can_still_set_auto_send(self):
+        self.client.force_login(self.executive)
+        self.client.post(reverse("email_create"), self._payload(auto_send="on"))
+        self.assertTrue(Email.objects.get().auto_send)
+
+    def test_assistant_edit_does_not_clear_an_executives_auto_send(self):
+        email = make_email(
+            self.executive, self.assistant, days_offset=1, auto_send=True
+        )
+        self.client.force_login(self.assistant)
+        self.client.post(
+            reverse("email_edit", args=[email.pk]),
+            self._payload(subject="edited by assistant"),
+        )
+        email.refresh_from_db()
+        self.assertEqual(email.subject, "edited by assistant")
+        self.assertTrue(email.auto_send)
+
+
 class ScheduledSendCommandTests(TestCase):
     def test_only_auto_send_drafts_that_are_due_go_out(self):
         executive = make_executive()

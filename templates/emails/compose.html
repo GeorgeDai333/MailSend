@@ -73,10 +73,12 @@
     </div>
   {% endif %}
 
-  <div class="check-row">
-    {{ form.auto_send }}
-    <label for="{{ form.auto_send.id_for_label }}">{{ form.auto_send.label }}</label>
-  </div>
+  {% if form.auto_send %}
+    <div class="check-row">
+      {{ form.auto_send }}
+      <label for="{{ form.auto_send.id_for_label }}">{{ form.auto_send.label }}</label>
+    </div>
+  {% endif %}
 
   <div class="check-row">
     {{ form.is_mail_merge }}
@@ -84,14 +86,33 @@
   </div>
 
   <div class="field" id="merge-fields">
-    <label for="{{ form.merge_csv.id_for_label }}">{{ form.merge_csv.label }}</label>
-    {{ form.merge_csv }}
+    <label for="id_merge_csv">{{ form.merge_csv.label }}</label>
+
+    {% if email.merge_csv %}
+      <div class="current-file">
+        <span>📄 {{ email.merge_csv.name|cut:"merge/" }}</span>
+        <span class="badge badge-merge">{{ email.merge_recipient_count }} recipient{{ email.merge_recipient_count|pluralize }}</span>
+        <label class="clear-toggle" for="merge_csv-clear_id">
+          <input type="checkbox" name="merge_csv-clear" id="merge_csv-clear_id"
+                 class="form-check-input">
+          Remove this list
+        </label>
+      </div>
+      <div class="help" id="clear-warning" style="display:none;">
+        On save, the recipient list is removed, the To field is emptied and this
+        stops being a mail merge.
+      </div>
+    {% endif %}
+
+    <input type="file" name="merge_csv" id="id_merge_csv" class="form-control" accept=".csv">
     <div class="help">
       One row per recipient, with a column named <span class="mono">email</span>.
       Any other column can be dropped into the subject or body as
       <span class="mono">{% verbatim %}{{column_name}}{% endverbatim %}</span> — each recipient
       gets their own personalised copy, sent individually.
+      Uploading a list replaces whatever is in To.
     </div>
+    <div class="help" id="merge-parse-status"></div>
     {% if form.merge_csv.errors %}<div class="errors">{{ form.merge_csv.errors }}</div>{% endif %}
   </div>
 
@@ -115,14 +136,124 @@
 {% endif %}
 
 <script>
+(function () {
+  var mergeToggle = document.getElementById('id_is_mail_merge');
+  var mergeFields = document.getElementById('merge-fields');
+  var fileInput   = document.getElementById('id_merge_csv');
+  var toField     = document.getElementById('{{ form.to.auto_id }}');
+  var clearBox    = document.getElementById('merge_csv-clear_id');
+  var clearWarn   = document.getElementById('clear-warning');
+  var status      = document.getElementById('merge-parse-status');
+
   // Only show the CSV picker when the draft is actually a mail merge.
-  (function () {
-    var toggle = document.getElementById('id_is_mail_merge');
-    var fields = document.getElementById('merge-fields');
-    if (!toggle || !fields) return;
-    function sync() { fields.style.display = toggle.checked ? '' : 'none'; }
-    toggle.addEventListener('change', sync);
-    sync();
-  })();
+  if (mergeToggle && mergeFields) {
+    var syncVisible = function () {
+      mergeFields.style.display = mergeToggle.checked ? '' : 'none';
+    };
+    mergeToggle.addEventListener('change', syncVisible);
+    syncVisible();
+  }
+
+  // Minimal RFC-4180 parser: enough to respect quoted fields containing
+  // commas, newlines and doubled quotes, which naive splitting gets wrong.
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) { text = text.slice(1); }
+    var rows = [], row = [], value = '', inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { value += '"'; i++; }
+          else { inQuotes = false; }
+        } else { value += ch; }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(value); value = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') { i++; }
+        row.push(value); rows.push(row); row = []; value = '';
+      } else {
+        value += ch;
+      }
+    }
+    if (value !== '' || row.length) { row.push(value); rows.push(row); }
+    return rows.filter(function (r) {
+      return r.some(function (c) { return c.trim() !== ''; });
+    });
+  }
+
+  // Must match RECIPIENT_COLUMNS on the server.
+  var RECIPIENT_COLUMNS = ['email', 'to', 'e-mail', 'email address'];
+
+  function recipientsFrom(text) {
+    var rows = parseCSV(text);
+    if (!rows.length) return { addresses: [], skipped: 0, hasColumn: false };
+    var header = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+    var index = -1;
+    for (var i = 0; i < header.length; i++) {
+      if (RECIPIENT_COLUMNS.indexOf(header[i]) !== -1) { index = i; break; }
+    }
+    if (index === -1) return { addresses: [], skipped: 0, hasColumn: false };
+
+    var seen = {}, addresses = [], skipped = 0;
+    for (var r = 1; r < rows.length; r++) {
+      var address = (rows[r][index] || '').trim();
+      if (!address) { skipped++; continue; }
+      var key = address.toLowerCase();
+      if (!seen[key]) { seen[key] = true; addresses.push(address); }
+    }
+    return { addresses: addresses, skipped: skipped, hasColumn: true };
+  }
+
+  // Uploading a list fills To immediately, replacing whatever was there.
+  if (fileInput && toField) {
+    fileInput.addEventListener('change', function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) { status.textContent = ''; return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var result = recipientsFrom(String(reader.result));
+        if (!result.hasColumn) {
+          toField.value = '';
+          status.innerHTML = '<span style="color:#d93025;">No “email” column found '
+            + 'in that CSV — check the header row.</span>';
+          return;
+        }
+        toField.value = result.addresses.join(', ');
+        if (mergeToggle && !mergeToggle.checked) {
+          mergeToggle.checked = true;
+          mergeToggle.dispatchEvent(new Event('change'));
+        }
+        var note = 'Loaded ' + result.addresses.length + ' recipient'
+                 + (result.addresses.length === 1 ? '' : 's') + ' into To.';
+        if (result.skipped) {
+          note += ' ' + result.skipped + ' row'
+               + (result.skipped === 1 ? '' : 's') + ' had no address and '
+               + (result.skipped === 1 ? 'was' : 'were') + ' skipped.';
+        }
+        status.textContent = note;
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Removing the list empties To straight away, so what you see is what saves.
+  if (clearBox && toField) {
+    clearBox.addEventListener('change', function () {
+      if (clearWarn) {
+        clearWarn.style.display = clearBox.checked ? '' : 'none';
+      }
+      if (clearBox.checked) {
+        toField.dataset.previous = toField.value;
+        toField.value = '';
+        if (fileInput) { fileInput.value = ''; }
+        if (status) { status.textContent = ''; }
+      } else if (toField.dataset.previous !== undefined) {
+        toField.value = toField.dataset.previous;
+      }
+    });
+  }
+})();
 </script>
 {% endblock %}

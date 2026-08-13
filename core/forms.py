@@ -3,7 +3,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import Email, User
+from .models import Email, User, recipients_from_csv
 
 # HTML datetime-local inputs post this format; keep it first so re-rendering a
 # bound form round-trips cleanly.
@@ -68,8 +68,19 @@ class EmailForm(forms.ModelForm):
             "merge_csv": "Recipient CSV",
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Set by clean() so the view can tell the user what just happened.
+        self.csv_was_cleared = False
+        self.recipients_loaded = 0
+
+        # Only the executive decides whether anything goes out unattended.
+        # Removing the field — rather than hiding it — means an assistant
+        # posting auto_send by hand cannot set it either. An existing value
+        # set by the executive survives an assistant's edit untouched.
+        if user is not None and user.is_assistant:
+            self.fields.pop("auto_send", None)
+
         self.fields["cc"].label = "CC"
         self.fields["bcc"].label = "BCC"
         if not self.instance.pk:
@@ -77,21 +88,60 @@ class EmailForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        is_merge = cleaned.get("is_mail_merge")
-        csv_file = cleaned.get("merge_csv")
+        csv_value = cleaned.get("merge_csv")
 
+        # A FileField with ClearableFileInput reports three different states:
+        # False means the Clear box was ticked, a file object means a new
+        # upload, and None means "leave whatever is already saved alone".
+        cleared = csv_value is False
+        uploaded = bool(csv_value) and csv_value is not False
+
+        if cleared:
+            # A mail merge with no recipient list is not a mail merge, and
+            # leaving the flag set would strand the draft in a state that
+            # looks merged but sends to nobody.
+            cleaned["is_mail_merge"] = False
+            cleaned["to"] = ""
+            self.csv_was_cleared = True
+        elif uploaded:
+            # A new list replaces the old recipients outright.
+            addresses = self._addresses_from_upload(csv_value)
+            if not addresses:
+                self.add_error(
+                    "merge_csv",
+                    "No recipients found — the CSV needs a header row with an "
+                    "“email” column.",
+                )
+            else:
+                cleaned["to"] = ", ".join(addresses)
+                cleaned["is_mail_merge"] = True
+                self.recipients_loaded = len(addresses)
+
+        is_merge = cleaned.get("is_mail_merge")
         if is_merge:
-            # An existing instance may already hold a CSV from a prior save.
-            if not csv_file and not self.instance.merge_csv:
+            if not uploaded and not self.instance.merge_csv:
                 raise ValidationError(
                     "Upload a CSV of recipients to use a mail merge."
                 )
-        else:
+        elif not cleared:
             if not cleaned.get("to") and not cleaned.get("cc") and not cleaned.get("bcc"):
                 raise ValidationError(
                     "Add at least one recipient in To, CC or BCC."
                 )
         return cleaned
+
+    @staticmethod
+    def _addresses_from_upload(upload):
+        """Read recipient addresses out of a freshly uploaded CSV.
+
+        The stream is rewound afterwards so the file still saves intact.
+        """
+        try:
+            upload.seek(0)
+            raw = upload.read()
+        finally:
+            upload.seek(0)
+        return recipients_from_csv(raw)
 
 
 class SignatureForm(forms.ModelForm):
