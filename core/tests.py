@@ -1,4 +1,6 @@
 import datetime
+import io
+import zipfile
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -6,6 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .attachments import GMAIL_BLOCKED_EXTENSIONS, rejection_reason
 from .models import Attachment, Email, GoogleCredential, User
 
 
@@ -531,6 +534,147 @@ class AssistantAutoSendTests(TestCase):
         email.refresh_from_db()
         self.assertEqual(email.subject, "edited by assistant")
         self.assertTrue(email.auto_send)
+
+
+class BccHeaderTests(TestCase):
+    """A BCC-only message must not go out with an empty To: header."""
+
+    def test_bcc_only_message_uses_undisclosed_recipients(self):
+        from .gmail import _build_mime
+
+        message = _build_mime(
+            "boss@example.com", [], [], ["hidden@example.com"], "Subj", "Body", []
+        )
+        self.assertEqual(message["To"], "undisclosed-recipients:;")
+        self.assertNotIn("\nTo: \n", message.as_string())
+        self.assertEqual(message["Bcc"], "hidden@example.com")
+
+    def test_normal_message_keeps_its_real_to_header(self):
+        from .gmail import _build_mime
+
+        message = _build_mime(
+            "boss@example.com", ["a@example.com"], [], ["b@example.com"],
+            "Subj", "Body", [],
+        )
+        self.assertEqual(message["To"], "a@example.com")
+
+    def test_cc_only_message_also_avoids_an_empty_to(self):
+        from .gmail import _build_mime
+
+        message = _build_mime(
+            "boss@example.com", [], ["c@example.com"], [], "Subj", "Body", []
+        )
+        self.assertEqual(message["To"], "undisclosed-recipients:;")
+        self.assertEqual(message["Cc"], "c@example.com")
+
+
+class AttachmentSafetyTests(TestCase):
+    def setUp(self):
+        self.executive = make_executive()
+        self.assistant = make_assistant(self.executive)
+        self.client.force_login(self.assistant)
+
+    def _post(self, upload):
+        return self.client.post(
+            reverse("email_create"),
+            {
+                "to": "someone@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "s",
+                "body": "b",
+                "send_date": "2026-12-01T09:00",
+                "attachments": upload,
+            },
+            follow=True,
+        )
+
+    def test_python_file_is_rejected(self):
+        """The case that prompted this: Gmail allows .py, we do not."""
+        response = self._post(SimpleUploadedFile("evil.py", b"import os"))
+        self.assertEqual(Email.objects.get().attachments.count(), 0)
+        self.assertContains(response, "can run code")
+
+    def test_executable_is_rejected(self):
+        self._post(SimpleUploadedFile("virus.exe", b"MZ\x90\x00"))
+        self.assertEqual(Email.objects.get().attachments.count(), 0)
+
+    def test_double_extension_is_judged_on_the_final_one(self):
+        self._post(SimpleUploadedFile("invoice.pdf.exe", b"MZ"))
+        self.assertEqual(Email.objects.get().attachments.count(), 0)
+
+    def test_extensionless_file_is_rejected(self):
+        response = self._post(SimpleUploadedFile("mystery", b"data"))
+        self.assertEqual(Email.objects.get().attachments.count(), 0)
+        self.assertContains(response, "no file extension")
+
+    def test_ordinary_documents_are_allowed(self):
+        for filename in ["report.pdf", "notes.docx", "budget.xlsx", "photo.png"]:
+            with self.subTest(filename=filename):
+                self.assertIsNone(
+                    rejection_reason(SimpleUploadedFile(filename, b"data"))
+                )
+
+    def test_zip_containing_an_executable_is_rejected(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("readme.txt", "harmless")
+            archive.writestr("payload.exe", "MZ")
+        buffer.seek(0)
+        response = self._post(SimpleUploadedFile("bundle.zip", buffer.read()))
+        self.assertEqual(Email.objects.get().attachments.count(), 0)
+        self.assertContains(response, "payload.exe")
+
+    def test_clean_zip_is_allowed(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("report.pdf", "harmless")
+        buffer.seek(0)
+        self.assertIsNone(
+            rejection_reason(SimpleUploadedFile("clean.zip", buffer.read()))
+        )
+
+    def test_corrupt_zip_is_not_treated_as_an_attack(self):
+        self.assertIsNone(
+            rejection_reason(SimpleUploadedFile("broken.zip", b"not really a zip"))
+        )
+
+    def test_case_is_ignored(self):
+        self.assertIsNotNone(
+            rejection_reason(SimpleUploadedFile("SCRIPT.PY", b"x"))
+        )
+        self.assertIsNotNone(
+            rejection_reason(SimpleUploadedFile("Setup.EXE", b"x"))
+        )
+
+    def test_every_extension_gmail_blocks_is_blocked_here(self):
+        for extension in GMAIL_BLOCKED_EXTENSIONS:
+            with self.subTest(extension=extension):
+                self.assertIsNotNone(
+                    rejection_reason(SimpleUploadedFile(f"file{extension}", b"x"))
+                )
+
+    def test_a_good_file_still_attaches_when_a_bad_one_is_rejected(self):
+        response = self.client.post(
+            reverse("email_create"),
+            {
+                "to": "someone@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "s",
+                "body": "b",
+                "send_date": "2026-12-01T09:00",
+                "attachments": [
+                    SimpleUploadedFile("good.pdf", b"pdf"),
+                    SimpleUploadedFile("bad.py", b"code"),
+                ],
+            },
+            follow=True,
+        )
+        email = Email.objects.get()
+        self.assertEqual(email.attachments.count(), 1)
+        self.assertEqual(email.attachments.get().original_name, "good.pdf")
+        self.assertContains(response, "can run code")
 
 
 class ScheduledSendCommandTests(TestCase):

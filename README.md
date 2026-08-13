@@ -78,6 +78,22 @@ delivery, replace them with your own address — Gmail treats `you+ann@gmail.com
 as `you@gmail.com`, so you can send the whole merge to yourself and see each
 personalised copy arrive separately.
 
+### Attachments
+
+Executable file types are refused: Gmail's
+[published blocklist](https://support.google.com/mail/answer/6590) plus the
+script types it misses (`.py`, `.sh`, `.rb`, `.pl`, `.php` and similar).
+`.zip` archives are inspected one level deep, as Gmail does. Files with no
+extension are also refused, since the recipient's mail client would be left
+guessing how to open them.
+
+This check has to live here: the Gmail **API** does not enforce the blocklist
+that the Gmail web interface applies, so without it MailSend could deliver a
+file Gmail itself would have rejected.
+
+A rejected file is reported and skipped; the rest of the message saves normally.
+The list is in [`core/attachments.py`](core/attachments.py).
+
 ### Scheduled sending
 
 Ticking "send automatically once the send date passes" lets the

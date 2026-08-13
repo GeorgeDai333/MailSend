@@ -38,7 +38,13 @@ def _compose_body(email, signature, row=None):
 def _build_mime(from_address, to_list, cc_list, bcc_list, subject, body, attachments):
     message = MIMEEmailMessage()
     message["From"] = from_address
-    message["To"] = ", ".join(to_list)
+    if to_list:
+        message["To"] = ", ".join(to_list)
+    else:
+        # A BCC-only message would otherwise carry an empty "To:" header,
+        # which spam filters treat as malformed bulk mail. This is the RFC 5322
+        # empty-group form: valid, delivers to nobody, and displays tidily.
+        message["To"] = "undisclosed-recipients:;"
     if cc_list:
         message["Cc"] = ", ".join(cc_list)
     if bcc_list:

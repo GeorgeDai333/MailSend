@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import google_oauth
+from .attachments import rejection_reason
 from .forms import (
     EmailForm,
     SignatureForm,
@@ -70,13 +71,17 @@ def get_editable_email(user, pk):
 
 
 def save_attachments(request, email):
-    """Attach any uploaded files, skipping ones that are too large."""
+    """Attach any uploaded files, skipping unsafe or oversized ones."""
     for upload in request.FILES.getlist("attachments"):
         if upload.size > settings.MAX_ATTACHMENT_BYTES:
             messages.warning(
                 request,
                 f"“{upload.name}” is too large to attach and was skipped.",
             )
+            continue
+        reason = rejection_reason(upload)
+        if reason:
+            messages.error(request, f"Not attached — {reason}")
             continue
         Attachment.objects.create(
             email=email,
